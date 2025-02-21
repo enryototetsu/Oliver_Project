@@ -1,0 +1,6 @@
+@Oliver_Project_HostAddress = http://localhost:5077
+
+GET {{Oliver_Project_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
