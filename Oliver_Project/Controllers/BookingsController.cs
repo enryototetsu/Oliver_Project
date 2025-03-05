@@ -24,10 +24,6 @@ namespace Oliver_Project.Controllers
         public async Task<IActionResult> GetBookings()
         {
             var bookings = await _context.Bookings.ToListAsync();
-            if (bookings == null || !bookings.Any())
-            {
-                return NotFound(new { message = "No bookings found." });
-            }
             return Ok(new { message = "Bookings retrieved successfully.", data = bookings });
         }
 
@@ -54,13 +50,27 @@ namespace Oliver_Project.Controllers
                 return BadRequest(new { message = "Booking data is null." });
             }
 
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
-            booking.BookedBy = userId;
+            if (string.IsNullOrEmpty(booking.BookedBy))
+            {
+                return BadRequest(new { message = "BookedBy field is required." });
+            }
 
-            _context.Bookings.Add(booking);
-            await _context.SaveChangesAsync();
+            try
+            {
+                _context.Bookings.Add(booking);
+                await _context.SaveChangesAsync();
 
-            return CreatedAtAction(nameof(GetBooking), new { id = booking.BookingId }, new { message = "Booking created successfully.", data = booking });
+                return CreatedAtAction(nameof(GetBooking), new { id = booking.BookingId },
+                    new { message = "Booking created successfully.", data = booking });
+            }
+            catch (DbUpdateException ex)
+            {
+                return StatusCode(500, new { message = "Database error occurred.", error = ex.Message });
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Unexpected error occurred.", error = ex.Message });
+            }
         }
 
         // ✏️ PUT: api/bookings/{id} - Update booking
@@ -79,23 +89,22 @@ namespace Oliver_Project.Controllers
                 return NotFound(new { message = $"Booking with ID {id} not found." });
             }
 
-            // Get the user ID of the logged-in member
-            var userId = User.Identity?.Name;
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.Identity?.Name;
+            var userRoles = User.FindAll(ClaimTypes.Role).Select(r => r.Value);
 
-            // Check if the user is a Member and trying to update someone else's booking
-            if (User.IsInRole("Member") && existingBooking.BookedBy != userId)
+            // Members can only update their own bookings
+            if (userRoles.Contains("Member") && existingBooking.BookedBy != userId)
             {
                 return StatusCode(403, new
                 {
-                    message = "You are not authorized to update this booking. Members can only update their own bookings."
+                    message = "You are not authorized to update this booking."
                 });
             }
 
-            // Update booking details
+            // Update allowed fields only
             existingBooking.FacilityDescription = updatedBooking.FacilityDescription;
             existingBooking.BookingDateFrom = updatedBooking.BookingDateFrom;
             existingBooking.BookingDateTo = updatedBooking.BookingDateTo;
-            existingBooking.BookedBy = updatedBooking.BookedBy;
             existingBooking.BookingStatus = updatedBooking.BookingStatus;
 
             try
@@ -105,7 +114,7 @@ namespace Oliver_Project.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "An error occurred while updating the booking.", error = ex.Message });
+                return StatusCode(500, new { message = "Error updating booking.", error = ex.Message });
             }
         }
 
@@ -120,13 +129,13 @@ namespace Oliver_Project.Controllers
                 return NotFound(new { message = $"Booking with ID {id} not found." });
             }
 
-            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier);
+            var userId = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.Identity?.Name;
             var userRoles = User.FindAll(ClaimTypes.Role).Select(r => r.Value);
 
-            // ✅ Only Admins or the owner can delete
+            // Only Admins or the owner can delete
             if (!userRoles.Contains("Admin") && booking.BookedBy != userId)
             {
-                return Forbid("You can only delete your own bookings.");
+                return StatusCode(403, new { message = "You are not authorized to delete this booking." });
             }
 
             _context.Bookings.Remove(booking);

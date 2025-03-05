@@ -19,7 +19,7 @@ builder.Services.AddIdentity<ApplicationUser, IdentityRole>()
     .AddDefaultTokenProviders();
 
 // Add Authentication
-var jwtKey = builder.Configuration["JWT:Secret"]; // Make sure to set JWT Secret Key in appsettings.json or environment variable
+var jwtKey = builder.Configuration["JWT:Secret"] ?? throw new ArgumentNullException("JWT:Secret", "JWT Secret Key is not configured.");
 builder.Services.AddAuthentication(options =>
 {
     options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
